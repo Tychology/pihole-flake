@@ -1,16 +1,25 @@
-{ piholeFlake, lingerFlake }: { config, pkgs, lib, ... }: with lib; with builtins; let
-  inherit (import ../lib/util.nix) extractContainerEnvVars extractContainerFTLEnvVars;
+{
+  piholeFlake,
+  lingerFlake,
+}: {
+  config,
+  pkgs,
+  lib,
+  ...
+}:
+with lib;
+with builtins; let
+  inherit (import ../lib/util.nix {inherit lib;}) extractContainerEnvVars extractContainerFTLEnvVars;
 
-  mkContainerEnvOption = { envVar, ... }@optionAttrs:
-    (mkOption (removeAttrs optionAttrs [ "envVar" ]))
-    // { inherit envVar; };
+  mkContainerEnvOption = {envVar, ...} @ optionAttrs:
+    (mkOption (removeAttrs optionAttrs ["envVar"]))
+    // {inherit envVar;};
 
   cfg = config.services.pihole;
   hostUserCfg = config.users.users.${cfg.hostConfig.user};
-  tmpDirIsResetAtBoot = config.boot.cleanTmpDir || config.boot.tmpOnTmpfs;
+  tmpDirIsResetAtBoot = config.boot.tmp.cleanOnBoot || config.boot.tmpOnTmpfs;
   systemTimeZone = config.time.timeZone;
   defaultPiholeVolumesDir = "${config.users.users.${cfg.hostConfig.user}.home}/pihole-volumes";
-
 in rec {
   options = {
     services.pihole = {
@@ -26,7 +35,7 @@ in rec {
         };
 
         enableLingeringForUser = mkOption {
-          type = with types; oneOf [ bool (enum [ "suppressWarning" ]) ];
+          type = with types; oneOf [bool (enum ["suppressWarning"])];
           description = ''
             If true lingering (see `loginctl enable-linger`) is enabled for the host user running pihole.
             This is necessary as otherwise starting the pihole container will fail if there is no active session for the host user.
@@ -104,12 +113,11 @@ in rec {
             Set to `true` if you have taken precautions s.t. rootless podman does not leave traces in `/tmp`.
 
             Failing to do so can cause rootless podman to fail to start at reboot (see https://github.com/containers/podman/issues/4057).
-            If `boot.cleanTmpDir` or `boot.tmpOnTmpfs` is set then you do not have to set this option.
+            If `boot.tmp.cleanOnBoot` or `boot.tmpOnTmpfs` is set then you do not have to set this option.
           '';
           default = false;
         };
       };
-
 
       piholeConfig = {
         tz = mkContainerEnvOption {
@@ -150,14 +158,14 @@ in rec {
           };
 
           layout = mkContainerEnvOption {
-            type = types.enum [ "boxed" "traditional" ];
+            type = types.enum ["boxed" "traditional"];
             description = "Use boxed layout (helpful when working on large screens)";
             default = "boxed";
             envVar = "WEBUIBOXEDLAYOUT";
           };
 
           theme = mkContainerEnvOption {
-            type = types.enum [ "default-dark" "default-darker" "default-light" "default-auto" "lcars" ];
+            type = types.enum ["default-dark" "default-darker" "default-light" "default-auto" "lcars"];
             description = "User interface theme to use.";
             default = "default-light";
             envVar = "WEBTHEME";
@@ -239,7 +247,7 @@ in rec {
             You can find the different options in the pihole docs: https://docs.pi-hole.net/ftldns/configfile
             The names should be exactly like in the pihole docs.
           '';
-          example = { LOCAL_IPV4 = "192.168.0.100"; };
+          example = {LOCAL_IPV4 = "192.168.0.100";};
           default = {};
         };
 
@@ -311,11 +319,11 @@ in rec {
           type = types.bool;
           description = "Enable query logging or not.";
           default = true;
-            envVar = "QUERY_LOGGING";
+          envVar = "QUERY_LOGGING";
         };
 
         temperatureUnit = mkContainerEnvOption {
-          type = types.enum [ "c" "k" "f" ];
+          type = types.enum ["c" "k" "f"];
           description = "Set preferred temperature unit to c: Celsius, k: Kelvin, or f Fahrenheit units.";
           default = "c";
           envVar = "TEMPERATUREUNIT";
@@ -325,42 +333,44 @@ in rec {
   };
 
   config = mkIf cfg.enable {
-
     assertions = [
-      { assertion = length hostUserCfg.subUidRanges > 0 && length hostUserCfg.subGidRanges > 0;
+      {
+        assertion = length hostUserCfg.subUidRanges > 0 && length hostUserCfg.subGidRanges > 0;
         message = ''
           The host user most have configured subUidRanges & subGidRanges as pihole is running in a rootless podman container.
         '';
       }
     ];
 
-    warnings = (optional (cfg.hostConfig.enableLingeringForUser == false) ''
-      If lingering is not enabled for the host user which is running the pihole container then he service might be stopped when no user session is active.
+    warnings =
+      (optional (cfg.hostConfig.enableLingeringForUser == false) ''
+        If lingering is not enabled for the host user which is running the pihole container then he service might be stopped when no user session is active.
 
-      Set `services.pihole.hostConfig.enableLingeringForUser` to `true` to manage systemd's linger setting through the `linger-flake` dependency.
-      Set it to "suppressWarning" if you manage lingering in a different way.
-    '') ++ (optional (!tmpDirIsResetAtBoot && !cfg.hostConfig.suppressTmpDirWarning) ''
-      Rootless podman can leave traces in `/tmp` after shutdown which can break the startup of new containers at the next boot.
-      See https://github.com/containers/podman/issues/4057 for details.
+        Set `services.pihole.hostConfig.enableLingeringForUser` to `true` to manage systemd's linger setting through the `linger-flake` dependency.
+        Set it to "suppressWarning" if you manage lingering in a different way.
+      '')
+      ++ (optional (!tmpDirIsResetAtBoot && !cfg.hostConfig.suppressTmpDirWarning) ''
+        Rootless podman can leave traces in `/tmp` after shutdown which can break the startup of new containers at the next boot.
+        See https://github.com/containers/podman/issues/4057 for details.
 
-      To avoid problems consider to clean `/tmp` of any left-overs from podman before the next startup.
-      The NixOS config options `boot.cleanTmpDir` or `boot.tmpOnTmpfs` can be helpful.
-      Enabling either of these disables this warning.
-      Otherwise you can also set `services.pihole.hostConfig.suppressTmpDirWarning` to `true` to disable the warning.
-    '');
+        To avoid problems consider to clean `/tmp` of any left-overs from podman before the next startup.
+        The NixOS config options `boot.tmp.cleanOnBoot` or `boot.tmpOnTmpfs` can be helpful.
+        Enabling either of these disables this warning.
+        Otherwise you can also set `services.pihole.hostConfig.suppressTmpDirWarning` to `true` to disable the warning.
+      '');
 
     services.linger = mkIf (cfg.hostConfig.enableLingeringForUser == true) {
       enable = true;
-      users = [ cfg.hostConfig.user ];
+      users = [cfg.hostConfig.user];
     };
 
     systemd.services."pihole-rootless-container" = {
-      wantedBy = [ "multi-user.target" ];
-      after = [ "network-online.target" ];
-      requires = [ "network-online.target" ];
+      wantedBy = ["multi-user.target"];
+      after = ["network-online.target"];
+      requires = ["network-online.target"];
 
       # required to make `newuidmap` available to the systemd service (see https://github.com/NixOS/nixpkgs/issues/138423)
-      path = [ "/run/wrappers" ];
+      path = ["/run/wrappers"];
 
       serviceConfig = let
         containerEnvVars = extractContainerEnvVars options.services.pihole cfg;
@@ -375,34 +385,42 @@ in rec {
         ExecStart = ''
           ${pkgs.podman}/bin/podman run \
             --rm \
-            --rmi \
+            # --rmi \
             --name="${cfg.hostConfig.containerName}" \
             ${
-              if cfg.hostConfig.persistVolumes then ''
+            if cfg.hostConfig.persistVolumes
+            then ''
               -v ${cfg.hostConfig.volumesPath}/etc-pihole:/etc/pihole \
               -v ${cfg.hostConfig.volumesPath}/etc-dnsmasq.d:/etc/dnsmasq.d \
-              '' else ""
-            } \
+            ''
+            else ""
+          } \
             ${
-              if !(isNull cfg.hostConfig.dnsPort) then ''
+            if !(isNull cfg.hostConfig.dnsPort)
+            then ''
               -p ${toString cfg.hostConfig.dnsPort}:53/tcp \
               -p ${toString cfg.hostConfig.dnsPort}:53/udp \
-              '' else ""
-            } \
+            ''
+            else ""
+          } \
             ${
-              if !(isNull cfg.hostConfig.dhcpPort) then ''
+            if !(isNull cfg.hostConfig.dhcpPort)
+            then ''
               -p ${toString cfg.hostConfig.dhcpPort}:67/udp \
-              '' else ""
-            } \
+            ''
+            else ""
+          } \
             ${
-              if !(isNull cfg.hostConfig.webPort) then ''
+            if !(isNull cfg.hostConfig.webPort)
+            then ''
               -p ${toString cfg.hostConfig.webPort}:80/tcp \
-              '' else ""
-            } \
+            ''
+            else ""
+          } \
             ${
-              concatStringsSep " \\\n"
-                (map (envVar: "  -e '${envVar.name}=${toString envVar.value}'") (containerEnvVars ++ containerFTLEnvVars))
-            } \
+            concatStringsSep " \\\n"
+            (map (envVar: "  -e '${envVar.name}=${toString envVar.value}'") (containerEnvVars ++ containerFTLEnvVars))
+          } \
             docker-archive:${piholeFlake.packages.${pkgs.system}.piholeImage}
         '';
 

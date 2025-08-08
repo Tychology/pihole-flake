@@ -21,25 +21,30 @@
 
     pihole = {
       url = "github:mindsbackyard/pihole-flake";
-      inputs.nixpkgs.follow = "nixpkgs";
+      inputs.nixpkgs.follows = "nixpkgs";
       inputs.flake-utils.follows = "flake-utils";
       inputs.linger.follows = "linger";
     };
   };
 
-  outputs = { self, nixpkgs, linger, pihole, ... }:
-    let
-      system = "x86_64-linux";
-      # use x86_64 packages from nixpkgs
-      pkgs = nixpkgs.legacyPackages.${system};
-
-    in {
-      nixosConfigurations."nixos-example-system" = nixpkgs.lib.nixosSystem {
-        # nixosSystem needs to know the system architecture
-        inherit system;
-        modules = [
-          # a small module for enabling nix flakes
-          { ... }: {
+  outputs = {
+    self,
+    nixpkgs,
+    linger,
+    pihole,
+    ...
+  }: let
+    system = "x86_64-linux";
+    # use x86_64 packages from nixpkgs
+    pkgs = nixpkgs.legacyPackages.${system};
+  in {
+    nixosConfigurations."nixos-example-system" = nixpkgs.lib.nixosSystem {
+      # nixosSystem needs to know the system architecture
+      inherit system;
+      modules = [
+        # a small module for enabling nix flakes
+        {...}:
+          {
             nix = {
               packge = pkgs.nixFlakes;
               extraOptions = "experimental-features = nix-command flake";
@@ -49,20 +54,17 @@
               registry.nixpkgs.flake = nixpkgs;
             };
           }
-
           # some existing system & hardware configuration modules; it is assumed that a user named `pihole` is defined here
           # and that the user has sub-uids/gids configured (e.g. via the `users.users.pihole.subUidRanges/subGidRanges` options)
           ./configuration.nix
           ./hardware.nix
-
           # make the module declared by the linger flake available to our config
           linger.nixosModules.${system}.default
           pihole.nixosModules.${system}.default
-
           # in another module we can now configure the lingering behaviour (could also be part of ./configuration.nix)
-          { ... }: {
+          {...}: {
             # required for stable restarts of the Pi-hole container (try to remove it to see the warning from the pihole-flake)
-            boot.cleanTmpDir = true;
+            boot.tmp.cleanOnBoot = true;
 
             # the Pi-hole service configuration
             services.pihole = {
@@ -86,7 +88,7 @@
                 # check the option description & the FTLDNS documentation for more information
                 LOCAL_IPV4 = "192.168.0.2";
               };
-              piholeCOnfig.web = {
+              piholeConfig.web = {
                 virtualHost = "pi.hole";
                 password = "password";
               };
@@ -95,11 +97,11 @@
             # we need to open the ports in the firewall to make the service accessible beyond `localhost`
             # assuming that Pi-hole is exposed on the host interface `eth0`
             networking.firewall.interfaces.eth0 = {
-              allowedTCPPorts = [ 5335 8080 ];
-              allowedUDPPorts = [ 5335 ];
+              allowedTCPPorts = [5335 8080];
+              allowedUDPPorts = [5335];
             };
           }
-        ];
-      };
+      ];
     };
+  };
 }
