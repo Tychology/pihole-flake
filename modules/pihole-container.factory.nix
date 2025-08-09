@@ -418,7 +418,7 @@ in rec {
             else ""
           } \
             ${
-            concatStringsSep " \\\n"
+            lib.strings.concatStringsSep " \\\n"
             (map (envVar: "  -e '${envVar.name}=${toString envVar.value}'") (containerEnvVars ++ containerFTLEnvVars))
           } \
             docker-archive:${piholeFlake.packages.${pkgs.system}.piholeImage}
