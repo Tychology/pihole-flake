@@ -74,7 +74,7 @@ in rec {
         dnsPort = mkOption {
           type = with types; nullOr (either port str);
           description = ''
-            THe port on which PiHole's DNS service shoud be exposed.
+            The port on which PiHole's DNS service shoud be exposed.
             Either pass a port number as integer or a string in the format `ip:port` (see [Docker docs](https://docs.docker.com/engine/reference/run/#expose-incoming-ports) for details).
 
             If this option is not specified the DNS service will not be exposed on the host.
@@ -86,7 +86,7 @@ in rec {
         dhcpPort = mkOption {
           type = with types; nullOr (either port str);
           description = ''
-            THe port on which PiHole's DHCP service shoud be exposed.
+            The port on which PiHole's DHCP service shoud be exposed.
             Either pass a port number as integer or a string in the format `ip:port` (see [Docker docs](https://docs.docker.com/engine/reference/run/#expose-incoming-ports) for details).
 
             If this option is not specified the DHCP service will not be exposed on the host.
@@ -98,7 +98,7 @@ in rec {
         webPort = mkOption {
           type = with types; nullOr (either port str);
           description = ''
-            THe port on which PiHole's web interface shoud be exposed.
+            The port on which PiHole's web interface shoud be exposed.
             Either pass a port number as integer or a string in the format `ip:port` (see [Docker docs](https://docs.docker.com/engine/reference/run/#expose-incoming-ports) for details).
 
             If this option is not specified the web interface will not be exposed on the host.
@@ -149,8 +149,13 @@ in rec {
             envVar = "WEBPASSWORD";
           };
 
-          # TODO password-file
-
+          passwordFile = mkOption {
+            type = types.str;
+            description = ''
+              Path to password File
+            '';
+            default = "";
+          };
           virtualHost = mkContainerEnvOption {
             type = types.str;
             description = "What your web server 'virtual host' is, accessing admin through this Hostname/IP allows you to make changes to the whitelist/blacklists in addition to the default 'http://pi.hole/admin/' address";
@@ -414,6 +419,13 @@ in rec {
             if !(isNull cfg.hostConfig.webPort)
             then ''
               -p ${toString cfg.hostConfig.webPort}:80/tcp \
+            ''
+            else ""
+          } \
+            ${
+            if cfg.web.passwordFile != ""
+            then ''
+              -e WEBPASSWORD="$(cat ${cfg.web.passwordFile})" \
             ''
             else ""
           } \
