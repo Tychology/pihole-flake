@@ -426,7 +426,7 @@ in rec {
             ${
             if cfg.web.passwordFile != ""
             then ''
-              -e WEBPASSWORD="$(cat ${cfg.web.passwordFile})" \
+              -e WEBPASSWORD="$(cat ${cfg.piholeConfig.web.passwordFile})" \
             ''
             else ""
           } \
