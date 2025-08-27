@@ -156,6 +156,7 @@ in rec {
             '';
             default = "";
           };
+
           virtualHost = mkContainerEnvOption {
             type = types.str;
             description = "What your web server 'virtual host' is, accessing admin through this Hostname/IP allows you to make changes to the whitelist/blacklists in addition to the default 'http://pi.hole/admin/' address";
