@@ -376,24 +376,19 @@ in rec {
       requires = ["network-online.target"];
 
       # required to make `newuidmap` available to the systemd service (see https://github.com/NixOS/nixpkgs/issues/138423)
-      path = ["/run/wrappers"];
+      path = ["/run/wrappers" "/run/current-system/sw/bin"];
 
       serviceConfig = let
         containerEnvVars = extractContainerEnvVars options.services.pihole cfg;
         containerFTLEnvVars = extractContainerFTLEnvVars cfg;
-      in {
-        ExecStartPre = mkIf cfg.hostConfig.persistVolumes [
-          "${pkgs.coreutils}/bin/mkdir -p ${cfg.hostConfig.volumesPath}/etc-pihole"
-          "${pkgs.coreutils}/bin/mkdir -p ${cfg.hostConfig.volumesPath}/etc-dnsmasq.d"
-          ''${pkgs.podman}/bin/podman rm --ignore "${cfg.hostConfig.containerName}"''
-        ];
 
-        ExecStart = ''
+        myScript = pkgs.writeShellScript "run-pihole.sh" ''
+          WEBPASSWORD=$(cat ${cfg.piholeConfig.web.passwordFile})
           ${pkgs.podman}/bin/podman run \
-            --rm \
-            # --rmi \
-            --name="${cfg.hostConfig.containerName}" \
-            ${
+                      --rm \
+                      --rmi \
+                      --name="${cfg.hostConfig.containerName}" \
+                      ${
             if cfg.hostConfig.persistVolumes
             then ''
               -v ${cfg.hostConfig.volumesPath}/etc-pihole:/etc/pihole \
@@ -401,7 +396,7 @@ in rec {
             ''
             else ""
           } \
-            ${
+                      ${
             if !(isNull cfg.hostConfig.dnsPort)
             then ''
               -p ${toString cfg.hostConfig.dnsPort}:53/tcp \
@@ -409,34 +404,41 @@ in rec {
             ''
             else ""
           } \
-            ${
+                      ${
             if !(isNull cfg.hostConfig.dhcpPort)
             then ''
               -p ${toString cfg.hostConfig.dhcpPort}:67/udp \
             ''
             else ""
           } \
-            ${
+                      ${
             if !(isNull cfg.hostConfig.webPort)
             then ''
               -p ${toString cfg.hostConfig.webPort}:80/tcp \
             ''
             else ""
           } \
-            ${
+                      ${
             if cfg.piholeConfig.web.passwordFile != ""
             then ''
-              -e WEBPASSWORD=$(cat ${cfg.piholeConfig.web.passwordFile}) \
+              -e WEBPASSWORD=$WEBPASSWORD \
             ''
             else ""
           } \
-            ${
+                      ${
             lib.strings.concatStringsSep " \\\n"
             (map (envVar: "  -e '${envVar.name}=${toString envVar.value}'") (containerEnvVars ++ containerFTLEnvVars))
           } \
-            docker-archive:${piholeFlake.packages.${pkgs.system}.piholeImage}
+                      docker-archive:${piholeFlake.packages.${pkgs.system}.piholeImage}
         '';
+      in {
+        ExecStartPre = mkIf cfg.hostConfig.persistVolumes [
+          "${pkgs.coreutils}/bin/mkdir -p ${cfg.hostConfig.volumesPath}/etc-pihole"
+          "${pkgs.coreutils}/bin/mkdir -p ${cfg.hostConfig.volumesPath}/etc-dnsmasq.d"
+          ''${pkgs.podman}/bin/podman rm --ignore "${cfg.hostConfig.containerName}"''
+        ];
 
+        ExecStart = "${myScript}";
         User = "${cfg.hostConfig.user}";
       };
 
